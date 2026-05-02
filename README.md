@@ -1,81 +1,102 @@
 # Hourly Work Logger
 
-这是一个 `macOS` 后台系统弹窗记录器，外加一个本地网页控制台。
+Hourly Work Logger is a macOS productivity tool that combines:
 
-现在的结构是：
+- a background system prompt that appears on a schedule
+- a local web control panel for settings and history
 
-- 后台本体：`launchd` 每分钟运行一次检查脚本
-- 真正弹窗：系统级 `osascript` 对话框
-- 网页控制台：本地网页，只负责改参数、手动触发、查看历史记录
+It is designed for people who want a simple way to record what they worked on every hour and create a lightweight accountability loop during the workday.
 
-## 你要的效果
+## Features
 
-本体保留后台弹窗版。
+- Scheduled macOS system dialogs
+- Required text input before closing the prompt
+- Configurable active hours
+- Hourly mode or fixed-interval mode
+- Local web UI for editing settings
+- History view grouped by day
+- Markdown export for selected dates
+- Local CSV log storage
 
-网页页面不自己弹浏览器对话框，而是：
+## How It Works
 
-- 配置后台弹窗参数
-- 手动触发一次系统弹窗
-- 查看已经记录过的内容
+The app has two parts:
 
-## 主要文件
+- A `launchd` background job that checks every minute whether a prompt should appear
+- A local web control panel for changing settings, triggering prompts manually, and reviewing saved entries
 
-- [install.sh](/Users/ruirui/Documents/Codex/2026-05-02/mac-iphone/install.sh)：安装后台任务
-- [serve.sh](/Users/ruirui/Documents/Codex/2026-05-02/mac-iphone/serve.sh)：启动网页控制台
-- [logger_core.py](/Users/ruirui/Documents/Codex/2026-05-02/mac-iphone/logger_core.py)：后台核心逻辑
-- [control_server.py](/Users/ruirui/Documents/Codex/2026-05-02/mac-iphone/control_server.py)：网页控制台后端
-- [index.html](/Users/ruirui/Documents/Codex/2026-05-02/mac-iphone/index.html)：网页控制台页面
+The actual reminder is a native macOS dialog shown through `osascript`, not a browser popup.
 
-## 安装后台弹窗
+## Requirements
 
-执行：
+- macOS
+- Python 3
+- Permission to run user `LaunchAgents`
+- Permission for system automation dialogs if macOS asks
 
-```bash
-zsh /Users/ruirui/Documents/Codex/2026-05-02/mac-iphone/install.sh
-```
+## Installation
 
-安装后会在当前用户下创建：
-
-- `~/Library/LaunchAgents/com.codex.hourly-work-logger.plist`
-- `~/Library/Application Support/HourlyWorkLogger/config.json`
-- `~/Library/Application Support/HourlyWorkLogger/state.json`
-- `~/Library/Application Support/HourlyWorkLogger/hourly-log.csv`
-
-## 打开网页控制台
-
-执行：
+1. Clone the repository:
 
 ```bash
-zsh /Users/ruirui/Documents/Codex/2026-05-02/mac-iphone/serve.sh
+git clone https://github.com/mulyawardani-lang/hourly-work-logger.git
+cd hourly-work-logger
 ```
 
-然后访问：
+2. Install the background prompt:
 
-`http://127.0.0.1:4173`
+```bash
+zsh install.sh
+```
 
-## 网页控制台能做什么
+3. Start the web control panel:
 
-- 启用或暂停后台提醒
-- 设置“每小时第几分钟弹”或“每隔多少分钟弹”
-- 设置工作开始和结束时间
-- 修改系统弹窗标题和提示文案
-- 手动立刻触发一次系统弹窗
-- 查看历史记录
+```bash
+zsh serve.sh
+```
 
-## 数据位置
+4. Open the control panel in your browser:
 
-后台配置和记录都保存在：
+```text
+http://127.0.0.1:4173
+```
 
-`~/Library/Application Support/HourlyWorkLogger`
+## Usage
 
-其中最重要的是：
+In the web control panel you can:
 
-- `config.json`：网页里保存的参数
-- `state.json`：后台最近一次触发状态
-- `hourly-log.csv`：你输入过的记录
+- enable or pause reminders
+- choose hourly or interval-based prompting
+- set start and end working hours
+- change the dialog title and prompt text
+- trigger a prompt immediately
+- search past entries
+- export entries as Markdown for a selected date range
 
-## 限制说明
+## Data Storage
 
-- 这是 `macOS` 的系统弹窗方案，不是浏览器弹窗
-- 它不能真正锁死整个系统，只能做到非常强的提醒
-- `iPhone` 不能实现“必须填完才能继续使用整个系统”
+The app stores its local data here:
+
+```text
+~/Library/Application Support/HourlyWorkLogger
+```
+
+Important files:
+
+- `config.json` for settings
+- `state.json` for background state
+- `hourly-log.csv` for saved entries
+
+## Project Files
+
+- `install.sh` installs and reloads the macOS `LaunchAgent`
+- `serve.sh` starts the local web control panel
+- `logger_core.py` contains scheduling, logging, and prompt logic
+- `control_server.py` serves the control panel API
+- `hourly_prompt.js` shows the native macOS dialog
+
+## Notes
+
+- This project is built for macOS only
+- It is a strong reminder tool, not a system-wide device lock
+- iPhone or iPad cannot enforce the same behavior at the system level
