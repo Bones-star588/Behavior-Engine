@@ -49,16 +49,18 @@ cd hourly-work-logger
 zsh install.sh
 ```
 
-3. Start the web control panel:
+3. The installer also starts a local web control panel as a background service.
 
-```bash
-zsh serve.sh
-```
-
-4. Open the control panel in your browser:
+Open it in your browser any time:
 
 ```text
 http://127.0.0.1:4173
+```
+
+4. If you want to start the control panel manually for debugging:
+
+```bash
+zsh serve.sh
 ```
 
 ## Usage
@@ -90,7 +92,7 @@ Important files:
 ## Project Files
 
 - `install.sh` installs and reloads the macOS `LaunchAgent`
-- `serve.sh` starts the local web control panel
+- `serve.sh` starts the local web control panel manually
 - `logger_core.py` contains scheduling, logging, and prompt logic
 - `control_server.py` serves the control panel API
 - `hourly_prompt.js` shows the native macOS dialog
