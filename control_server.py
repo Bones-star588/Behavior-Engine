@@ -9,8 +9,9 @@ import sys
 from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
+from analytics_core import classify_day, classify_week, get_day_view, get_week_view
 from logger_core import (
     APP_DIR,
     compute_next_due,
@@ -75,6 +76,18 @@ class ControlHandler(SimpleHTTPRequestHandler):
             )
             return
 
+        if parsed.path == "/api/analytics/day":
+            params = parse_qs(parsed.query)
+            date_str = str(params.get("date", [""])[0]).strip()
+            self.send_json(get_day_view(date_str or today_date()))
+            return
+
+        if parsed.path == "/api/analytics/week":
+            params = parse_qs(parsed.query)
+            date_str = str(params.get("date", [""])[0]).strip()
+            self.send_json(get_week_view(date_str or today_date()))
+            return
+
         return super().do_GET()
 
     def do_POST(self) -> None:
@@ -103,6 +116,28 @@ class ControlHandler(SimpleHTTPRequestHandler):
             self.send_json({"ok": deleted})
             return
 
+        if parsed.path == "/api/analytics/classify-day":
+            payload = self.read_json_body()
+            date_str = str(payload.get("date", "")).strip() or today_date()
+            try:
+                result = classify_day(date_str)
+            except ValueError as exc:
+                self.send_json({"ok": False, "error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
+                return
+            self.send_json({"ok": True, "day": result})
+            return
+
+        if parsed.path == "/api/analytics/classify-week":
+            payload = self.read_json_body()
+            date_str = str(payload.get("date", "")).strip() or today_date()
+            try:
+                result = classify_week(date_str)
+            except ValueError as exc:
+                self.send_json({"ok": False, "error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
+                return
+            self.send_json({"ok": True, "week": result})
+            return
+
         self.send_error(HTTPStatus.NOT_FOUND, "Not Found")
 
     def read_json_body(self) -> dict:
@@ -114,18 +149,24 @@ class ControlHandler(SimpleHTTPRequestHandler):
             data = {}
         return data if isinstance(data, dict) else {}
 
-    def send_json(self, data: dict) -> None:
+    def send_json(self, data: dict, status: HTTPStatus = HTTPStatus.OK) -> None:
         body = json.dumps(data, ensure_ascii=False).encode("utf-8")
-        self.send_response(HTTPStatus.OK)
+        self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
 
 
+def today_date() -> str:
+    from datetime import datetime
+
+    return datetime.now().strftime("%Y-%m-%d")
+
+
 def main() -> int:
     server = ThreadingHTTPServer(("127.0.0.1", PORT), ControlHandler)
-    print(f"Hourly Work Logger control panel: http://127.0.0.1:{PORT}")
+    print(f"Behavior Engine · Mirror Review: http://127.0.0.1:{PORT}")
     server.serve_forever()
     return 0
 
