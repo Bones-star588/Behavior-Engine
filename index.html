@@ -7,6 +7,7 @@
     <link rel="stylesheet" href="./style.css" />
   </head>
   <body>
+    <div id="waterRippleLayer" class="water-ripple-layer" aria-hidden="true"></div>
     <div class="app-shell">
       <main class="workspace-stack">
         <section class="module-shell surface">
@@ -367,6 +368,54 @@
                 <div id="weeklyGrid" class="week-grid"></div>
               </section>
             </section>
+          </section>
+        </section>
+
+        <section class="module-shell surface">
+          <div class="module-head">
+            <div>
+              <p class="section-kicker">Hermes Usage</p>
+              <h2>Hermes 用量看板</h2>
+            </div>
+            <p class="module-note">读取本机 Hermes 状态库，展示当前会话模型、Token 消耗和花费。</p>
+          </div>
+
+          <section class="surface panel hermes-panel inner-panel">
+            <div class="panel-head">
+              <div>
+                <p class="section-kicker">Usage Snapshot</p>
+                <h2>实时用量</h2>
+              </div>
+              <span id="hermesUsageStatus" class="analytics-summary">正在读取 Hermes 状态库...</span>
+            </div>
+
+            <div class="hermes-filter-bar">
+              <label class="hermes-filter">
+                <span class="recent-label">统计方式</span>
+                <select id="hermesScopeSelect">
+                  <option value="total">总消耗量</option>
+                  <option value="session">单会话</option>
+                </select>
+              </label>
+
+              <label class="hermes-filter">
+                <span class="recent-label">模型</span>
+                <select id="hermesModelSelect">
+                  <option value="">全部模型</option>
+                </select>
+              </label>
+
+              <label class="hermes-filter hermes-filter-session">
+                <span class="recent-label">会话</span>
+                <select id="hermesSessionSelect">
+                  <option value="">选择会话</option>
+                </select>
+              </label>
+            </div>
+
+            <div id="hermesUsageBoard" class="hermes-usage-board">
+              <div class="empty-state">正在加载 Hermes 的模型、Token 与花费数据。</div>
+            </div>
           </section>
         </section>
       </main>

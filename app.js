@@ -7,12 +7,19 @@ const state = {
   autosaveTimer: null,
   analyticsDay: null,
   analyticsWeek: null,
+  hermesUsage: null,
+  hermesFilters: {
+    scope: "total",
+    model: "",
+    sessionId: "",
+  },
 };
 
 const HISTORY_PAGE_SIZE = 5;
 const DEFAULT_BLACKLIST_LIMIT_SECONDS = 60 * 60;
 
 const els = {
+  waterRippleLayer: document.querySelector("#waterRippleLayer"),
   enabled: document.querySelector("#enabled"),
   scheduleMode: document.querySelector("#scheduleMode"),
   minuteOfHour: document.querySelector("#minuteOfHour"),
@@ -61,6 +68,11 @@ const els = {
   weeklySummary: document.querySelector("#weeklySummary"),
   dailyGrid: document.querySelector("#dailyGrid"),
   weeklyGrid: document.querySelector("#weeklyGrid"),
+  hermesScopeSelect: document.querySelector("#hermesScopeSelect"),
+  hermesModelSelect: document.querySelector("#hermesModelSelect"),
+  hermesSessionSelect: document.querySelector("#hermesSessionSelect"),
+  hermesUsageStatus: document.querySelector("#hermesUsageStatus"),
+  hermesUsageBoard: document.querySelector("#hermesUsageBoard"),
   toast: document.querySelector("#toast"),
 };
 
@@ -69,6 +81,7 @@ seedExportDates();
 seedAnalyticsDate();
 loadStatus({ forceHydrate: true });
 loadAnalytics();
+loadHermesUsage();
 startStatusPolling();
 
 function attachEvents() {
@@ -89,6 +102,9 @@ function attachEvents() {
   els.readingBlacklist.addEventListener("input", handleReadingBlacklistDraftChange);
   els.blacklistUsageList.addEventListener("input", handleBlacklistLimitDraftInput);
   els.blacklistUsageList.addEventListener("change", handleBlacklistLimitDraftInput);
+  els.hermesScopeSelect.addEventListener("change", handleHermesScopeChange);
+  els.hermesModelSelect.addEventListener("change", handleHermesModelChange);
+  els.hermesSessionSelect.addEventListener("change", handleHermesSessionChange);
   bindSettingsDraftTracking();
 }
 
@@ -128,15 +144,55 @@ async function loadAnalytics() {
   }
 }
 
+async function loadHermesUsage() {
+  const params = new URLSearchParams();
+  params.set("scope", state.hermesFilters.scope || "total");
+  if (state.hermesFilters.model) {
+    params.set("model", state.hermesFilters.model);
+  }
+  if (state.hermesFilters.sessionId) {
+    params.set("sessionId", state.hermesFilters.sessionId);
+  }
+
+  try {
+    const response = await fetch(`/api/hermes-usage?${params.toString()}`);
+    state.hermesUsage = await response.json();
+
+    if (state.hermesUsage?.selected) {
+      state.hermesFilters = {
+        scope: state.hermesUsage.selected.scope || "total",
+        model: state.hermesUsage.selected.model || "",
+        sessionId: state.hermesUsage.selected.sessionId || "",
+      };
+    }
+
+    renderHermesUsage();
+  } catch {
+    state.hermesUsage = {
+      available: false,
+      error: "暂时无法读取 Hermes 用量数据。",
+      modelOptions: [],
+      sessionOptions: [],
+      focus: null,
+    };
+    renderHermesUsage();
+  }
+}
+
 function startStatusPolling() {
   window.setInterval(async () => {
+    if (document.hidden) {
+      return;
+    }
     try {
       await loadStatus();
+      await loadHermesUsage();
     } catch {
       // Keep the current UI state if a background refresh fails.
     }
   }, 3000);
 }
+
 
 async function saveSettingsInternal({ showToast }) {
   const payload = readSettingsFromForm();
@@ -282,6 +338,7 @@ function render() {
 
   renderBlacklistUsagePanels(readingGuardConfig, readingGuardState);
   renderHistory();
+  renderHermesUsage();
 }
 
 function setSavingState(saving) {
@@ -366,6 +423,25 @@ async function classifySelectedDay() {
 
 async function classifySelectedWeek() {
   await runAnalyticsAction("/api/analytics/classify-week", "week");
+}
+
+async function handleHermesScopeChange() {
+  state.hermesFilters.scope = els.hermesScopeSelect.value || "total";
+  if (state.hermesFilters.scope !== "session") {
+    state.hermesFilters.sessionId = "";
+  }
+  await loadHermesUsage();
+}
+
+async function handleHermesModelChange() {
+  state.hermesFilters.model = els.hermesModelSelect.value || "";
+  state.hermesFilters.sessionId = "";
+  await loadHermesUsage();
+}
+
+async function handleHermesSessionChange() {
+  state.hermesFilters.sessionId = els.hermesSessionSelect.value || "";
+  await loadHermesUsage();
 }
 
 async function runAnalyticsAction(path, mode) {
@@ -568,6 +644,130 @@ function renderHistory() {
     .join("");
 }
 
+function renderHermesUsage() {
+  if (!els.hermesUsageBoard || !els.hermesUsageStatus) {
+    return;
+  }
+
+  const hermesUsage = state.hermesUsage || state.status?.hermesUsage;
+  syncHermesFilters(hermesUsage);
+
+  if (!hermesUsage) {
+    els.hermesUsageStatus.textContent = "暂时拿不到 Hermes 数据。";
+    els.hermesUsageBoard.innerHTML = '<div class="empty-state">暂时无法读取 Hermes 状态库。</div>';
+    return;
+  }
+
+  if (!hermesUsage.available || !hermesUsage.focus) {
+    els.hermesUsageStatus.textContent = hermesUsage.error || "还没有检测到 Hermes 会话。";
+    els.hermesUsageBoard.innerHTML = `<div class="empty-state">${escapeHtml(hermesUsage.error || "Hermes 还没有产生可读取的会话记录。")}</div>`;
+    return;
+  }
+
+  const focus = hermesUsage.focus;
+  const latestSession = hermesUsage.latestSession;
+  const activeSession = hermesUsage.activeSession;
+  const statusPrefix = focus.type === "session" ? "当前查看单会话" : "当前查看总消耗";
+  els.hermesUsageStatus.textContent = `${statusPrefix} · ${focus.title || "Hermes 用量"} · ${hermesUsage.updatedAt ? formatDateTime(hermesUsage.updatedAt) : "刚刚更新"}`;
+
+  els.hermesUsageBoard.innerHTML = `
+    <section class="hermes-usage-section">
+      <div class="analytics-section-head">
+        <h3>${escapeHtml(focus.type === "session" ? "选中会话" : "筛选结果")}</h3>
+        <span class="analytics-summary">${escapeHtml(focus.description || "暂无说明")}</span>
+      </div>
+      <div class="hermes-metric-grid">
+        ${renderHermesMetricCard("模型", focus.model || "全部模型", focus.type === "session" ? (focus.source || "session") : `${formatNumber(focus.sessionCount || 0)} 个会话`)}
+        ${renderHermesMetricCard("输入 Token", formatNumber(focus.inputTokens), "prompt / input")}
+        ${renderHermesMetricCard("输出 Token", formatNumber(focus.outputTokens), "completion / output")}
+        ${renderHermesMetricCard("总 Token", formatNumber(focus.totalTokens), "input + output")}
+        ${renderHermesMetricCard("花费", formatUsdCost(focus.displayCostUsd, focus.costStatus), formatHermesCostCaption(focus))}
+        ${renderHermesMetricCard("计费状态", formatHermesCostStatus(focus.costStatus), focus.billingMode || (focus.type === "total" ? "aggregate" : "billing unknown"))}
+      </div>
+      <div class="hermes-detail-grid">
+        <div class="recent-card compact-card">
+          <span class="recent-label">${focus.type === "session" ? "会话时间" : "覆盖时间"}</span>
+          <strong>${focus.startedAt ? formatDateTime(focus.startedAt) : "暂无"}</strong>
+          <span class="recent-note">${focus.type === "session" ? (focus.isActive ? "会话进行中" : focus.endedAt ? `结束于 ${formatDateTime(focus.endedAt)}` : "等待下一次更新") : (focus.endedAt ? `最近一条会话开始于 ${formatDateTime(focus.endedAt)}` : "当前筛选下暂无更多时间信息")}</span>
+        </div>
+        <div class="recent-card compact-card">
+          <span class="recent-label">${focus.type === "session" ? "Provider / Base URL" : "筛选条件"}</span>
+          <strong>${focus.type === "session" ? (focus.billingProvider || "未知") : (focus.model || "全部模型")}</strong>
+          <span class="recent-note">${escapeHtml(focus.type === "session" ? (focus.billingBaseURL || "未记录 Base URL") : (state.hermesFilters.scope === "session" ? "当前处于单会话模式" : "当前处于总消耗模式"))}</span>
+        </div>
+      </div>
+    </section>
+    <section class="hermes-usage-section">
+      <div class="analytics-section-head">
+        <h3>辅助参考</h3>
+        <span class="analytics-summary">方便你在不同模型和不同会话之间切换对比</span>
+      </div>
+      <div class="hermes-detail-grid">
+        ${renderHermesReferenceCard("最新会话", latestSession)}
+        ${renderHermesReferenceCard("当前活跃会话", activeSession)}
+      </div>
+    </section>
+  `;
+}
+
+function renderHermesMetricCard(label, value, note) {
+  return `
+    <article class="metric-card hermes-metric-card">
+      <span class="metric-label">${escapeHtml(label)}</span>
+      <strong class="metric-value hermes-metric-value">${escapeHtml(value)}</strong>
+      <span class="metric-footnote">${escapeHtml(note)}</span>
+    </article>
+  `;
+}
+
+function renderHermesReferenceCard(label, session) {
+  if (!session) {
+    return `
+      <div class="recent-card compact-card">
+        <span class="recent-label">${escapeHtml(label)}</span>
+        <strong>暂无</strong>
+        <span class="recent-note">当前筛选下还没有可展示的 Hermes 会话。</span>
+      </div>
+    `;
+  }
+
+  return `
+    <div class="recent-card compact-card">
+      <span class="recent-label">${escapeHtml(label)}</span>
+      <strong>${escapeHtml(session.model || "未记录模型")}</strong>
+      <span class="recent-note">${escapeHtml(`${session.startedAt ? formatDateTime(session.startedAt) : "未知时间"} · ${formatNumber(session.totalTokens)} tokens`)}</span>
+    </div>
+  `;
+}
+
+function syncHermesFilters(hermesUsage) {
+  if (!els.hermesScopeSelect || !els.hermesModelSelect || !els.hermesSessionSelect) {
+    return;
+  }
+
+  const selected = hermesUsage?.selected || state.hermesFilters;
+  els.hermesScopeSelect.value = selected.scope || "total";
+
+  const modelOptions = Array.isArray(hermesUsage?.modelOptions) ? hermesUsage.modelOptions : [{ value: "", label: "全部模型" }];
+  els.hermesModelSelect.innerHTML = modelOptions
+    .map((option) => `<option value="${escapeHtml(option.value || "")}">${escapeHtml(formatHermesModelOptionLabel(option))}</option>`)
+    .join("");
+  els.hermesModelSelect.value = selected.model || "";
+
+  const sessionOptions = Array.isArray(hermesUsage?.sessionOptions) ? hermesUsage.sessionOptions : [];
+  els.hermesSessionSelect.innerHTML = [
+    '<option value="">自动选择最近会话</option>',
+    ...sessionOptions.map((option) => `<option value="${escapeHtml(option.value || "")}">${escapeHtml(option.label || option.value || "")}</option>`),
+  ].join("");
+  els.hermesSessionSelect.value = selected.sessionId || "";
+  els.hermesSessionSelect.disabled = (selected.scope || "total") !== "session";
+}
+
+function formatHermesModelOptionLabel(option) {
+  const count = Number(option?.sessionCount || 0);
+  return `${option?.label || "全部模型"} (${count})`;
+}
+
 function getReadingGuardConfigForRender(savedConfig) {
   if (!state.isEditingSettings) {
     return savedConfig;
@@ -665,6 +865,47 @@ function formatDateTime(value) {
     hour: "2-digit",
     minute: "2-digit",
   }).format(date);
+}
+
+function formatNumber(value) {
+  return new Intl.NumberFormat("zh-CN").format(Math.max(0, Number(value || 0)));
+}
+
+function formatUsdCost(value, status) {
+  const amount = Number(value || 0);
+  if (!Number.isFinite(amount)) {
+    return "待计算";
+  }
+  if (amount <= 0 && status === "unknown") {
+    return "待计算";
+  }
+  return `US$${amount.toFixed(amount >= 1 ? 4 : 6)}`;
+}
+
+function formatHermesCostStatus(status) {
+  if (status === "actual") {
+    return "实际计费";
+  }
+  if (status === "estimated") {
+    return "预估计费";
+  }
+  if (status === "included") {
+    return "已包含";
+  }
+  return "待定价";
+}
+
+function formatHermesCostCaption(current) {
+  if (current.type === "total") {
+    return `${formatNumber(current.sessionCount || 0)} 个会话汇总`;
+  }
+  if (current.actualCostUsd !== null) {
+    return "provider actual";
+  }
+  if (Number(current.estimatedCostUsd || 0) > 0) {
+    return "estimated by Hermes";
+  }
+  return "仅拿到 usage，尚无价格";
 }
 
 function escapeHtml(text) {
